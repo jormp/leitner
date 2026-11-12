@@ -1,0 +1,47 @@
+﻿services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leitner}
+      POSTGRES_USER: ${POSTGRES_USER:-leitner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leitner}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-leitner}:${POSTGRES_PASSWORD:-leitner}@db:5432/${POSTGRES_DB:-leitner}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en el archivo .env}
+      APP_URL: ${APP_URL:-http://localhost:8090}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Madrid}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Por defecto solo escucha en localhost (el proxy con HTTPS del host es el que se expone).
+      # Docker publica los puertos saltándose ufw, así que no lo abras a 0.0.0.0 en producción.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8090}:80"
+
+volumes:
+  db_data:
